@@ -1,0 +1,7 @@
+venv/
+.*/
+data_raw/
+data/
+data.*
+*.ipynb
+Untitled.py
