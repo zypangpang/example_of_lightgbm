@@ -7,3 +7,7 @@ def remove_small_variance(df, var_threshold):
     :return: Dataframe with feature variance > var_threshold
     """
     return df.loc[:, df.var() > var_threshold]
+
+def remove_many_na_col(df, na_threshold):
+    na_fractions=1-df.count()/len(df.index)
+    return df.drop(columns=df.columns[na_fractions>=na_threshold])
