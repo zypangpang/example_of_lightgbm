@@ -14,19 +14,23 @@ def trans_data(rPath, wPath):
     data = x[rPath.stem]
     col_name = list(map(lambda x: f'n_{x}', list(range(0, len(data[0][0][0])))))
     col_name[-1] = 'l'
-    data = np.concatenate(data[0])
-    df = pd.DataFrame(data=data, columns=col_name)
-    with wPath.open('w') as f:
-        f.write(df.to_csv(index=False))
+    #data = np.concatenate(data[0])
+    #df = pd.DataFrame(data=data, columns=col_name)
+    data_num=['10','20','30']
+    for index, num in enumerate(data_num):
+        path=wPath/num/f'{rPath.stem}.csv'
+        df = pd.DataFrame(data=data[0][index], columns=col_name)
+        with path.open('w') as f:
+            f.write(df.to_csv(index=False))
 
 
 def trans_mat_to_csv():
     rp = Path('./data_raw/')
-    wp = Path("./data/")
+    wp = Path("./data_split/")
     for dir1 in rp.iterdir():
         for dir2 in dir1.iterdir():
             for file in dir2.iterdir():
-                wpath = wp / file.relative_to('data_raw/').with_suffix('.csv')
+                wpath = wp / file.relative_to('data_raw/').parent #.with_suffix('.csv')
                 trans_data(file, wpath)
 
 
@@ -51,15 +55,17 @@ def merge_datasets():
             f.write(df.to_csv(index=False))
 
     dataset_names = ['NASA', 'CK']
+    percentage=['10','20','30']
     for name in dataset_names:
-        ds_train_path = Path(f"./data/{name}/{name}Train/")
-        ds_test_path = Path(f"./data/{name}/{name}Test/")
-        df_train = merge_helper(ds_train_path)
-        df_test = merge_helper(ds_test_path)
-        out_train_path = ds_train_path / 'alltrain.csv'
-        out_test_path = ds_test_path / 'alltest.csv'
-        write_csv(out_train_path, df_train)
-        write_csv(out_test_path, df_test)
+        for per in percentage:
+            ds_train_path = Path(f"./data_split/{name}/{name}Train/{per}/")
+            ds_test_path = Path(f"./data_split/{name}/{name}Test/{per}/")
+            df_train = merge_helper(ds_train_path)
+            df_test = merge_helper(ds_test_path)
+            out_train_path = ds_train_path / 'alltrain.csv'
+            out_test_path = ds_test_path / 'alltest.csv'
+            write_csv(out_train_path, df_train)
+            write_csv(out_test_path, df_test)
 
 
 def process_extra_label(df,remove):
@@ -71,3 +77,4 @@ def process_extra_label(df,remove):
             df['l'].loc[(df['l'] != -1) & (df['l'] != 1)] = 1
             return df
     return df
+
