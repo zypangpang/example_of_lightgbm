@@ -6,11 +6,14 @@ from functools import reduce
 from sklearn.metrics import roc_auc_score
 import hyperopt
 from hyperopt import STATUS_OK, Trials, hp, space_eval, tpe
-import utils, feature_selector
+import utils, feature_selector,preprocess
 
 global_params = {
-    'var_threshold': 15,
+    #'var_threshold': 0, ## For CK, not remove any feature based on variance
+    'var_threshold': 15, ## For NASA, remove features with variance <= 15
     'na_threshold':0.5,
+    'col_threshold':0.98,
+    'remove_collinear_threshold':700,
     'lgb_num_round': 500,
     'lgb_early_stop_rounds': 100,
 }
@@ -48,12 +51,12 @@ def hyperopt_lightgbm(X_train: pd.DataFrame, y_train: pd.Series):
         "bagging_freq": 5,
         "reg_alpha": 0.1,
         "reg_lambda": 0.1,
-        # "learning_rate": 0.12524,
-        # "num_leaves": 16
+        #"learning_rate": 0.1,
+        #"num_leaves": 32
     }
 
     ## space for var_threshold search
-    space1 = hp.choice('var_threshold', np.linspace(5, 20, 15, dtype=int))
+    space1 = hp.choice('var_threshold', np.linspace(0, 20, 15, dtype=int))
 
     ## space for lightgbm hyperparam search
     space = {
@@ -69,15 +72,15 @@ def hyperopt_lightgbm(X_train: pd.DataFrame, y_train: pd.Series):
         # "scale_pos_weight": hp.uniform('x', 0, 5),
     }
 
-    # var_series=X_train.var()
+    var_series=X_train.var()
 
     def objective(hyperparams):
-        # X_trn=X_train.loc[:,var_series>hyperparams]
+        #X_trn=X_train.loc[:,var_series>hyperparams]
         X_trn = X_train
         X_trn, y_trn, X_val, y_val = train_val_split(X_trn, y_train)
 
         model = train_lightgbm({**params, **hyperparams}, X_trn, y_trn, X_val, y_val)
-        # model=train_lightgbm(params,X_trn,y_trn,X_val,y_val)
+        #model=train_lightgbm(params,X_trn,y_trn,X_val,y_val)
 
         score = model.best_score["valid_0"][params['metric']]
 
@@ -93,13 +96,11 @@ def hyperopt_lightgbm(X_train: pd.DataFrame, y_train: pd.Series):
 
     hyperparams = space_eval(space, best)
     print(f"hyperopt auc = {-trials.best_trial['result']['loss']:0.4f} {hyperparams}")
-    # drop_feature = set(X_train.columns.tolist())
-    # for result in trials.results:
-    #    drop_feature = drop_feature & set(result['drop_feature'])
+
     drop_feature = \
-    reduce(lambda r1, r2: {'drop_feature': r1['drop_feature'].union(r2['drop_feature'])}, trials.results)[
+    reduce(lambda r1, r2: {'drop_feature': r1['drop_feature'].intersection(r2['drop_feature'])}, trials.results)[
         'drop_feature']
-    print(drop_feature)
+    print(f'drop features:{len(drop_feature)}')
     return {**params, **hyperparams}, drop_feature, trials.best_trial['result']['best_iter']
 
 
@@ -116,33 +117,52 @@ def lightgbm_predict(model, X_test, y_test):
 
 def test_dataset(train_file_path, test_file_path):
     df = pd.read_csv(str(train_file_path))
+    df = preprocess.process_extra_label(df,True)
+
+    df_test = pd.read_csv(str(test_file_path))
+    df_test=preprocess.process_extra_label(df_test,True)
+
+    df_test_data = df_test.drop(columns=['l'])
+    df_test_label = df_test['l']
+
     # df.isnull().sum().any()
     X_train = df.drop(columns=['l'])
     y_train = df['l']
     y_trn = y_train
 
     X_trn = feature_selector.remove_many_na_col(X_train,global_params['na_threshold'])
+    X_trn = feature_selector.remove_single_unique(X_trn)
     X_trn = feature_selector.remove_small_variance(X_trn, global_params['var_threshold'])
+    if len(X_trn.index)<global_params['remove_collinear_threshold']:
+        X_trn = feature_selector.remove_collinear_col(X_trn,global_params['col_threshold'])
+
     hyperparams, drop_features, best_num_round = hyperopt_lightgbm(X_trn, y_trn)
     X_trn = X_trn.drop(columns=drop_features)
-    print('X_trn columns:'+X_trn.columns)
+    print(f'X_trn columns:{X_trn.columns}')
     final_model = train_for_predict(hyperparams, best_num_round, X_trn, y_trn)
-
-    df_test = pd.read_csv(str(test_file_path))
-    df_test_data = df_test.drop(columns=['l'])
-    df_test_label = df_test['l']
 
     return lightgbm_predict(final_model, df_test_data.loc[:, X_trn.columns], df_test_label)
 
 
-@utils.debug_wrapper
-def main():
-    train_path = Path('./data/NASA/NASATrain/')
-    test_path = Path('./data/NASA/NASATest/')
+def run_on_all_data():
+    ds_name="CK"
+    train_path = Path(f'./data/{ds_name}/{ds_name}Train/')
+    test_path = Path(f'./data/{ds_name}/{ds_name}Test/')
     aucs = {}
     for train_file_path in train_path.iterdir():
         test_file_path = test_path / train_file_path.name.replace('train', 'test')
         aucs[train_file_path.name] = test_dataset(train_file_path, test_file_path)
     print(aucs)
-    utils.write_to_file(aucs, Path('./results/naive_results.json'))
+    utils.write_to_file(aucs, Path(f'./results/{ds_name}_results.json'))
 
+@utils.debug_wrapper
+def main():
+    train_path = Path('./data/CK/CKTrain/')
+    test_path = Path('./data/CK/CKTest/')
+    train_file_path=train_path/'ivy2train.csv'
+    test_file_path=test_path/'ivy2test.csv'
+    auc=test_dataset(train_file_path,test_file_path)
+    print(f'auc: {auc}')
+
+#main()
+run_on_all_data()

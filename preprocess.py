@@ -34,29 +34,40 @@ def process_na(df):
     if df.isnull().sum().any():
         df.fillna('0')
 
+
 def merge_datasets():
     def merge_helper(dir_path):
         df_all = None
         for file in dir_path.iterdir():
             df = pd.read_csv(str(file))
             if df_all is None:
-                df_all=df
+                df_all = df
             else:
-                df_all=df_all.append(df,ignore_index=True)
+                df_all = df_all.append(df, ignore_index=True)
         return df_all
 
-    def write_csv(path,df):
+    def write_csv(path, df):
         with path.open('w') as f:
             f.write(df.to_csv(index=False))
 
-    dataset_names=['NASA','CK']
+    dataset_names = ['NASA', 'CK']
     for name in dataset_names:
-        ds_train_path=Path(f"./data/{name}/{name}Train/")
-        ds_test_path=Path(f"./data/{name}/{name}Test/")
-        df_train=merge_helper(ds_train_path)
-        df_test=merge_helper(ds_test_path)
-        out_train_path=ds_train_path / 'alltrain.csv'
-        out_test_path=ds_test_path / 'alltest.csv'
-        write_csv(out_train_path,df_train)
-        write_csv(out_test_path,df_test)
+        ds_train_path = Path(f"./data/{name}/{name}Train/")
+        ds_test_path = Path(f"./data/{name}/{name}Test/")
+        df_train = merge_helper(ds_train_path)
+        df_test = merge_helper(ds_test_path)
+        out_train_path = ds_train_path / 'alltrain.csv'
+        out_test_path = ds_test_path / 'alltest.csv'
+        write_csv(out_train_path, df_train)
+        write_csv(out_test_path, df_test)
 
+
+def process_extra_label(df,remove):
+    if df['l'].nunique() > 2:
+        if remove:
+            to_drop_rows = df.index[(df['l'] != -1) & (df['l'] != 1)]
+            return df.drop(to_drop_rows)
+        else:
+            df['l'].loc[(df['l'] != -1) & (df['l'] != 1)] = 1
+            return df
+    return df
