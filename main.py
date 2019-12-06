@@ -20,7 +20,8 @@ global_params = {
     'model_num': 15,
     'hyperopt_per_mode': False,
     'remove_non_label_cols': True,
-    'last_model_weight':8
+    'last_model_weight': 8,
+    'global_metric':'auc'
 }
 
 
@@ -47,7 +48,7 @@ def hyperopt_lightgbm(X_train: pd.DataFrame, y_train: pd.Series, X_val, y_val):
     ## fixed lightgbm params
     params = {
         "objective": "binary",
-        "metric": "auc",
+        "metric": global_params['global_metric'],
         "verbosity": -1,
         "seed": 1,
         "num_threads": 4,
@@ -87,7 +88,7 @@ def hyperopt_lightgbm(X_train: pd.DataFrame, y_train: pd.Series, X_val, y_val):
         model = train_lightgbm({**params, **hyperparams}, X_train, y_train, X_val, y_val)
         # model=train_lightgbm(params,X_trn,y_trn,X_val,y_val)
 
-        score = model.best_score["valid_0"][params['metric']]
+        score = model.best_score["valid_0"][global_params['global_metric']]
 
         to_drop = X_train.columns[model.feature_importance('gain') == 0]
         print(f'to drop:{len(to_drop)}')
@@ -123,8 +124,8 @@ def lightgbm_predict(models, X_test, y_test):
         res_dict[f'model_{index}'] = ypred
         print(f'model_{index} predict finished')
 
-    res_dict[f'model_{global_params["model_num"]-1}'] = res_dict[f'model_{global_params["model_num"]-1}']*global_params['last_model_weight']
     res_df = pd.DataFrame(res_dict)
+    res_df.iloc[:, -1] = res_df.iloc[:, -1]*global_params['last_model_weight']
 
     return roc_auc_score(y_test, res_df.mean(axis=1))
 
@@ -163,7 +164,11 @@ def test_dataset(dataset_name, train_file_path, test_file_path):
     print('finish split data')
 
     hyperparams, drop_features, best_num_round = hyperopt_lightgbm(X_trn, y_trn, X_val, y_val)
+    print(f'drop_features: {drop_features}')
     X_trn = X_trn.drop(columns=drop_features)
+    X_val = X_val.drop(columns=drop_features)
+    to_drop=feature_importance_iter(hyperparams,X_trn,y_trn,X_val,y_val)
+    X_trn=X_trn.drop(columns=to_drop)
     print(f'X_trn columns:{X_trn.columns}')
     print(f'X_trn columns:{len(X_trn.columns)}')
 
@@ -191,6 +196,31 @@ def train_multiple_models(hyperparams, num_rounds, X_train, y_train):
         print(f"Train model_{i} finished")
     return models, num_round_list
 
+def feature_importance_iter(hyperparams,X_trn,y_trn,X_val,y_val):
+    #X_trn,y_trn,X_val,y_val=train_val_split(X_train,y_train,0)
+    model=train_lightgbm(hyperparams, X_trn,y_trn,X_val,y_val)
+    best_score = model.best_score["valid_0"][global_params['global_metric']]
+
+    importance_df=pd.DataFrame()
+    importance_df['feature']=X_trn.columns
+    importance_df['importance']=model.feature_importance('gain')
+    importance_df=importance_df.sort_values('importance')
+
+    to_drop=[]
+    for row in importance_df.iterrows():
+        X_trn=X_trn.drop(columns=[row[1]['feature']])
+        X_val=X_val.drop(columns=[row[1]['feature']])
+        model=train_lightgbm(hyperparams, X_trn,y_trn,X_val,y_val)
+        score = model.best_score["valid_0"][global_params['global_metric']]
+        if score>=best_score:
+            to_drop.append(row[1]['feature'])
+            best_score=score
+        else:
+            break
+
+    print(f'best_score: {best_score}')
+    print(f'to_drop_imp_features: {to_drop}')
+    return to_drop
 
 def run_on_data(ds_name, percentage):
     train_path = Path(f'./data_split/{ds_name}/{ds_name}Train/{percentage}')
@@ -205,7 +235,7 @@ def run_on_data(ds_name, percentage):
 
 @utils.debug_wrapper
 def main():
-    ds_name = 'NASA'
+    ds_name = 'CK'
     per = '30'
     train_path = Path(f'./data_split/{ds_name}/{ds_name}Train/{per}')
     test_path = Path(f'./data_split/{ds_name}/{ds_name}Test/{per}')
@@ -215,6 +245,6 @@ def main():
     print(f'auc: {auc}')
 
 
-main()
-#run_on_data('CK',30)
+#main()
+run_on_data('CK',30)
 
