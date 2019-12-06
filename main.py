@@ -246,5 +246,10 @@ def main():
 
 
 #main()
+run_on_data('CK',10)
+run_on_data('CK',20)
 run_on_data('CK',30)
+run_on_data('NASA',30)
+run_on_data('NASA',20)
+run_on_data('NASA',10)
 

@@ -1,0 +1,10 @@
+{
+    "alltrain.csv": 0.6970064033403858,
+    "ant1train.csv": 0.8139475908706677,
+    "ivy2train.csv": 0.767123287671233,
+    "jedit4train.csv": 0.6786047053342651,
+    "lucene2train.csv": 0.6901952214452214,
+    "synapse1train.csv": 0.7045736327317812,
+    "velocity1train.csv": 0.5,
+    "xalan2train.csv": 0.6361775261588232
+}
